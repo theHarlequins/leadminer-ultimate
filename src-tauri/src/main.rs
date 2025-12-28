@@ -11,21 +11,33 @@ use leadminer_ultimate::{
     data_normalizer::{normalize_phone, PhoneType},
     scraper::{EnrichedLead, LeadScraper},
     connection_test::ConnectionTester,
+    ai::{AiService, OpenRouterModel},
 };
 
 // Глобальное состояние приложения
 struct AppState {
     proxy_rotator: Arc<Mutex<ProxyRotator>>,
     scraper: Arc<LeadScraper>,
+    ai_service: Arc<AiService>,
 }
 
-// Команды Tauri
+#[tauri::command]
+async fn fetch_models(
+    api_key: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<OpenRouterModel>, String> {
+    state.ai_service.fetch_models(&api_key).await
+}
+
+// ... existing commands ...
+
 #[tauri::command]
 async fn start_scraping(
     city: String,
     query: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<EnrichedLead>, String> {
+    // ... code ...
     println!("=== LeadMiner: Запрос на скрапинг ===");
     println!("Город: {}", city);
     println!("Запрос: {}", query);
@@ -56,6 +68,7 @@ async fn start_scraping(
     }
 }
 
+// ... update_proxies, normalize_phone_command, test_connection ...
 #[tauri::command]
 async fn update_proxies(
     proxies: Vec<String>,
@@ -98,12 +111,14 @@ fn main() {
         .manage(AppState {
             proxy_rotator: Arc::new(Mutex::new(ProxyRotator::new())),
             scraper: Arc::new(LeadScraper::new()),
+            ai_service: Arc::new(AiService::new()),
         })
         .invoke_handler(tauri::generate_handler![
             start_scraping,
             update_proxies,
             normalize_phone_command,
             test_connection,
+            fetch_models,
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска LeadMiner Ultimate");

@@ -10,8 +10,10 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.9",
     "@tanstack/react-query": "^5.0.0",
     "@tauri-apps/api": "^2.9.1",
+    "clsx": "^2.1.1",
     "lucide-react": "^0.292.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

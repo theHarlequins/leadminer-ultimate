@@ -49,10 +49,11 @@ impl AiService {
         }
     }
 
-    pub async fn fetch_models(&self) -> Result<Vec<OpenRouterModel>, String> {
+    pub async fn fetch_models(&self, api_key: &str) -> Result<Vec<OpenRouterModel>, String> {
         let url = "https://openrouter.ai/api/v1/models";
         let resp = self.client
             .get(url)
+            .header("Authorization", format!("Bearer {}", api_key))
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;

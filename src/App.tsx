@@ -12,7 +12,7 @@ import {
   Wifi,
   AlertTriangle
 } from 'lucide-react';
-import SettingsComponent from './components/Settings'; // Renaming import to avoid conflict with Lucide icon
+import AiSettingsPanel from './components/AiSettingsPanel';
 
 interface Lead {
   name: string;
@@ -235,7 +235,7 @@ const App: React.FC = () => {
           {/* Proxy Settings */}
           {showSettings && (
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <SettingsComponent />
+              <AiSettingsPanel />
             </div>
           )}
         </div>
