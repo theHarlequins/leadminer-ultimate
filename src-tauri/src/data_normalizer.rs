@@ -52,9 +52,6 @@ pub fn normalize_phone(phone: &str) -> Result<(String, PhoneType), String> {
         cleaned[2..].to_string()
     } else if cleaned.starts_with("8") && cleaned.len() > 10 {
         cleaned[1..].to_string()
-    } else if cleaned.starts_with("0") && cleaned.len() == 10 {
-        // Убираем ведущий ноль для украинских номеров
-        cleaned[1..].to_string()
     } else if cleaned.len() == 9 {
         // Если 9 цифр, добавляем ведущий ноль (код оператора)
         format!("0{}", cleaned)
@@ -70,6 +67,10 @@ pub fn normalize_phone(phone: &str) -> Result<(String, PhoneType), String> {
     // Извлекаем код оператора (первые 3 цифры)
     let operator_code = &cleaned[0..3];
     
+    if operator_code == "000" {
+        return Err("Код оператора не может быть 000".to_string());
+    }
+    
     // Определяем тип телефона
     let phone_type = if MOBILE_CODES.contains(operator_code) {
         PhoneType::Mobile
@@ -78,7 +79,7 @@ pub fn normalize_phone(phone: &str) -> Result<(String, PhoneType), String> {
     };
     
     // Форматируем в международный формат: 380XXYYYYZZZZ
-    let normalized = format!("380{}", cleaned);
+    let normalized = format!("38{}", cleaned);
     
     Ok((normalized, phone_type))
 }

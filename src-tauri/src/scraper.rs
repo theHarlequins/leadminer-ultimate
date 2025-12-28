@@ -12,27 +12,27 @@ use crate::data_normalizer::{normalize_phone, PhoneType};
 // --- Scraper Source Architecture ---
 
 pub trait ScraperSource: Send + Sync {
-    fn scrape<'a>(
-        &'a self,
-        url: &'a str,
-        client: &'a Client,
-        user_agent: &'a str,
-    ) -> BoxFuture<'a, Result<String, String>>;
+    fn scrape(
+        &self,
+        url: String,
+        client: Client,
+        user_agent: String,
+    ) -> BoxFuture<'static, Result<String, String>>;
     
     fn source_name(&self) -> String;
 }
 
 pub struct GoogleMapsSource;
 impl ScraperSource for GoogleMapsSource {
-    fn scrape<'a>(
-        &'a self,
-        url: &'a str,
-        client: &'a Client,
-        user_agent: &'a str,
-    ) -> BoxFuture<'a, Result<String, String>> {
+    fn scrape(
+        &self,
+        url: String,
+        client: Client,
+        user_agent: String,
+    ) -> BoxFuture<'static, Result<String, String>> {
         Box::pin(async move {
             let response = client
-                .get(url)
+                .get(&url)
                 .header("User-Agent", user_agent)
                 .header("Accept", "text/html")
                 .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
@@ -56,15 +56,15 @@ impl ScraperSource for GoogleMapsSource {
 
 pub struct TwoGisSource;
 impl ScraperSource for TwoGisSource {
-    fn scrape<'a>(
-        &'a self,
-        url: &'a str,
-        client: &'a Client,
-        user_agent: &'a str,
-    ) -> BoxFuture<'a, Result<String, String>> {
+    fn scrape(
+        &self,
+        url: String,
+        client: Client,
+        user_agent: String, // Kept for interface consistency, though we overwrite it
+    ) -> BoxFuture<'static, Result<String, String>> {
         Box::pin(async move {
             let response = client
-                .get(url)
+                .get(&url)
                 // 2GIS often requires specific mobile UA for the mobile site or just generic
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36") 
                 .header("Accept", "text/html")
@@ -222,7 +222,7 @@ impl LeadScraper {
 
         let (client, user_agent) = self.get_client_with_proxy(proxy_rotator).await;
 
-        match self.google_source.scrape(&url, &client, &user_agent).await {
+        match self.google_source.scrape(url, client, user_agent).await {
             Ok(html) => Ok(self.parse_google_results(&html, city)),
             Err(e) => Err(e),
         }
@@ -240,7 +240,7 @@ impl LeadScraper {
 
         let (client, user_agent) = self.get_client_with_proxy(proxy_rotator).await;
 
-        match self.two_gis_source.scrape(&url, &client, &user_agent).await {
+        match self.two_gis_source.scrape(url, client, user_agent).await {
             Ok(html) => Ok(self.parse_2gis_results(&html, city)),
             Err(e) => Err(e),
         }
@@ -585,9 +585,10 @@ impl LeadScraper {
 pub fn extract_phone_from_text(text: &str) -> String {
     // Улучшенные паттерны для украинских номеров
     let patterns = vec![
-        r"\(?\d{3}\)?[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}",  // (067) 123-45-67
+        r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}", // (067) 123-45-67 (7 digits)
+        r"\(?\d{3}\)?[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}",  // (067) 12-34-56 (6 digits)
         r"\+?380\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}",          // +380671234567
-        r"\d{3}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}",       // 067.123.45.67
+        r"\d{3}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}",       // 067.123.45.67
         r"0\d{2}\s?\d{3}\s?\d{2}\s?\d{2}",                  // 067 123 45 67
     ];
 

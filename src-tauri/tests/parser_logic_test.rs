@@ -14,12 +14,12 @@ mock! {
     pub Source {}
     
     impl ScraperSource for Source {
-        fn scrape<'a>(
-            &'a self,
-            url: &'a str,
-            client: &'a Client,
-            user_agent: &'a str,
-        ) -> BoxFuture<'a, Result<String, String>>;
+        fn scrape(
+            &self,
+            url: String,
+            client: Client,
+            user_agent: String,
+        ) -> BoxFuture<'static, Result<String, String>>;
         
         fn source_name(&self) -> String;
     }

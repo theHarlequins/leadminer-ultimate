@@ -28,7 +28,7 @@ impl LeadRepository {
     pub async fn save_lead(&self, lead: &EnrichedLead) -> Result<bool, Error> {
         // First check if lead exists to avoid error on duplicate (or use ON CONFLICT IGNORE)
         // Using explicit check to return bool indicating if it was new
-        if self.lead_exists(&lead.phone).await? {
+        if self.lead_exists(&lead.normalized_phone).await? {
             return Ok(false);
         }
 
