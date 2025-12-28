@@ -4,9 +4,90 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use futures::future::BoxFuture;
 
 use crate::proxy_manager::ProxyRotator;
 use crate::data_normalizer::{normalize_phone, PhoneType};
+
+// --- Scraper Source Architecture ---
+
+pub trait ScraperSource: Send + Sync {
+    fn scrape<'a>(
+        &'a self,
+        url: &'a str,
+        client: &'a Client,
+        user_agent: &'a str,
+    ) -> BoxFuture<'a, Result<String, String>>;
+    
+    fn source_name(&self) -> String;
+}
+
+pub struct GoogleMapsSource;
+impl ScraperSource for GoogleMapsSource {
+    fn scrape<'a>(
+        &'a self,
+        url: &'a str,
+        client: &'a Client,
+        user_agent: &'a str,
+    ) -> BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let response = client
+                .get(url)
+                .header("User-Agent", user_agent)
+                .header("Accept", "text/html")
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    resp.text().await.map_err(|e| format!("Google text err: {}", e))
+                }
+                Ok(resp) => Err(format!("Google status: {}", resp.status())),
+                Err(e) => Err(format!("Google error: {}", e)),
+            }
+        })
+    }
+
+    fn source_name(&self) -> String {
+        "google".to_string()
+    }
+}
+
+pub struct TwoGisSource;
+impl ScraperSource for TwoGisSource {
+    fn scrape<'a>(
+        &'a self,
+        url: &'a str,
+        client: &'a Client,
+        user_agent: &'a str,
+    ) -> BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let response = client
+                .get(url)
+                // 2GIS often requires specific mobile UA for the mobile site or just generic
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36") 
+                .header("Accept", "text/html")
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    resp.text().await.map_err(|e| format!("2GIS text err: {}", e))
+                }
+                Ok(resp) => Err(format!("2GIS status: {}", resp.status())),
+                Err(e) => Err(format!("2GIS error: {}", e)),
+            }
+        })
+    }
+    
+    fn source_name(&self) -> String {
+        "2gis".to_string()
+    }
+}
+
+// --- End Architecture ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawLead {
@@ -42,6 +123,8 @@ pub enum LeadStatus {
 
 pub struct LeadScraper {
     http_client: Client,
+    pub google_source: Box<dyn ScraperSource>,
+    pub two_gis_source: Box<dyn ScraperSource>,
 }
 
 impl LeadScraper {
@@ -51,6 +134,23 @@ impl LeadScraper {
                 .timeout(Duration::from_secs(15))
                 .build()
                 .unwrap(),
+            google_source: Box::new(GoogleMapsSource),
+            two_gis_source: Box::new(TwoGisSource),
+        }
+    }
+    
+    // For testing/injection
+    pub fn new_with_sources(
+        google: Box<dyn ScraperSource>, 
+        two_gis: Box<dyn ScraperSource>
+    ) -> Self {
+        Self {
+            http_client: Client::builder()
+                .timeout(Duration::from_secs(15))
+                .build()
+                .unwrap(),
+            google_source: google,
+            two_gis_source: two_gis,
         }
     }
 
@@ -122,21 +222,9 @@ impl LeadScraper {
 
         let (client, user_agent) = self.get_client_with_proxy(proxy_rotator).await;
 
-        let response = client
-            .get(&url)
-            .header("User-Agent", user_agent)
-            .header("Accept", "text/html")
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-            .send()
-            .await;
-
-        match response {
-            Ok(resp) if resp.status().is_success() => {
-                let html = resp.text().await.unwrap_or_default();
-                Ok(self.parse_google_results(&html, city))
-            }
-            Ok(resp) => Err(format!("Google статус: {}", resp.status())),
-            Err(e) => Err(format!("Google ошибка: {}", e)),
+        match self.google_source.scrape(&url, &client, &user_agent).await {
+            Ok(html) => Ok(self.parse_google_results(&html, city)),
+            Err(e) => Err(e),
         }
     }
 
@@ -152,21 +240,9 @@ impl LeadScraper {
 
         let (client, user_agent) = self.get_client_with_proxy(proxy_rotator).await;
 
-        let response = client
-            .get(&url)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
-            .header("Accept", "text/html")
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-            .send()
-            .await;
-
-        match response {
-            Ok(resp) if resp.status().is_success() => {
-                let html = resp.text().await.unwrap_or_default();
-                Ok(self.parse_2gis_results(&html, city))
-            }
-            Ok(resp) => Err(format!("2GIS статус: {}", resp.status())),
-            Err(e) => Err(format!("2GIS ошибка: {}", e)),
+        match self.two_gis_source.scrape(&url, &client, &user_agent).await {
+            Ok(html) => Ok(self.parse_2gis_results(&html, city)),
+            Err(e) => Err(e),
         }
     }
 
