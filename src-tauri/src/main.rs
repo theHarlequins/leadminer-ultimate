@@ -83,23 +83,39 @@ async fn start_scraping(
         Ok(mut leads) => {
             println!("=== Успешно! Найдено {} лидов ===", leads.len());
             
-            // Если есть API ключ, запускаем AI анализ
-            if let Some(key) = api_key {
-                if !key.is_empty() {
-                    let model = model_id.unwrap_or_else(|| "google/gemini-2.0-flash-exp:free".to_string());
-                    println!("=== Запуск AI анализа (Model: {}) ===", model);
-                    
-                    for lead in &mut leads {
-                        match ai_service.analyze_lead(lead, &key, &model).await {
-                            Ok(_) => println!("AI: Анализ для {} завершен", lead.name),
-                            Err(e) => println!("AI: Ошибка анализа для {}: {}", lead.name, e),
+            // Если скрапинг не вернул результатов и есть API ключ — генерируем через AI
+            if leads.is_empty() {
+                if let Some(ref key) = api_key {
+                    if !key.is_empty() {
+                        let model = model_id.clone().unwrap_or_else(|| "google/gemini-2.0-flash-exp:free".to_string());
+                        println!("=== Скрапинг пуст, запускаем AI генерацию ===");
+                        
+                        match ai_service.generate_leads(&city, &query, key, &model).await {
+                            Ok(ai_leads) => {
+                                leads = ai_leads;
+                                println!("=== AI сгенерировал {} лидов ===", leads.len());
+                            },
+                            Err(e) => println!("=== Ошибка AI генерации: {} ===", e),
                         }
                     }
-                } else {
-                     println!("=== AI анализ пропущен (нет ключа) ===");
                 }
-            } else {
-                println!("=== AI анализ пропущен (нет ключа) ===");
+            }
+            
+            // Если есть лиды и API ключ — анализируем
+            if !leads.is_empty() {
+                if let Some(key) = api_key {
+                    if !key.is_empty() {
+                        let model = model_id.unwrap_or_else(|| "google/gemini-2.0-flash-exp:free".to_string());
+                        println!("=== Запуск AI анализа (Model: {}) ===", model);
+                        
+                        for lead in &mut leads {
+                            match ai_service.analyze_lead(lead, &key, &model).await {
+                                Ok(_) => println!("AI: Анализ для {} завершен", lead.name),
+                                Err(e) => println!("AI: Ошибка анализа для {}: {}", lead.name, e),
+                            }
+                        }
+                    }
+                }
             }
             
             // Авто-сохранение в CSV
