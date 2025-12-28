@@ -5,3 +5,5 @@ pub mod tester;
 pub mod connection_test;
 pub mod db;
 pub mod ai;
+pub mod settings;
+pub mod ai_verification_test;

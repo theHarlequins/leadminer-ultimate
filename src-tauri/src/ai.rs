@@ -5,8 +5,10 @@ use reqwest::Client;
 pub struct Pricing {
     pub prompt: String,
     pub completion: String,
-    pub image: String,
-    pub request: String,
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default)]
+    pub request: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,5 +69,50 @@ impl AiService {
             .map_err(|e| format!("Parse error: {}", e))?;
 
         Ok(body.data)
+    }
+
+    pub async fn analyze_lead(
+        &self, 
+        lead: &mut crate::scraper::EnrichedLead, 
+        api_key: &str,
+        model: &str
+    ) -> Result<(), String> {
+        println!("AI: Analyzing lead '{}' using model '{}'", lead.name, model);
+        
+        let prompt = format!(
+            "Analyze this business lead and verify if it matches the user request. 
+Lead: Name: {}, Description: {}, City: {}. 
+Return a JSON with 'is_relevant' (bool) and 'category' (string).",
+            lead.name, lead.address, lead.city
+        );
+
+        let request_body = serde_json::json!({
+            "model": model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        });
+
+        let resp = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("AI Request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+             let error_text = resp.text().await.unwrap_or_default();
+             return Err(format!("AI API Error: {}", error_text));
+        }
+
+        // For now, we just log success. In future we parse the JSON and update the lead.
+        // We'll mark status as 'Contacted' to show it was processed, or keep 'New'
+        // For demonstration of 'change', let's say we verified it
+        // lead.status = crate::scraper::LeadStatus::Contacted; 
+
+        println!("AI Analysis Success for {}", lead.name);
+        Ok(())
     }
 }

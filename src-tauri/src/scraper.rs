@@ -190,17 +190,9 @@ impl LeadScraper {
             }
         }
 
-        // Если ничего не найдено, создаем тестовые данные
+        // Если ничего не найдено, просто логируем
         if all_leads.is_empty() {
-            println!("Создание тестовых данных...");
-            all_leads.push(RawLead {
-                name: format!("{} {}", query, city),
-                address: format!("ул. Тестовая, 1, {}", city),
-                phone: "(067) 123-45-67".to_string(),
-                website: Some("https://example.com".to_string()),
-                city: city.to_string(),
-                source: "test".to_string(),
-            });
+             println!("Ничего не найдено в Google и 2GIS.");
         }
 
         // Обогащаем лиды

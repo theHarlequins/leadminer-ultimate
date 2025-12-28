@@ -1,8 +1,9 @@
-import { useState, Fragment } from "react";
+import { useState, Fragment, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Combobox, Switch, Transition } from "@headlessui/react";
 import { Eye, EyeOff, RefreshCw, Check, Save } from "lucide-react";
 import clsx from "clsx";
+import { useSettings } from "../hooks/useSettings";
 
 interface Pricing {
     prompt: string;
@@ -16,6 +17,7 @@ interface Model {
 }
 
 export default function AiSettingsPanel() {
+    const { settings, saveSettings, loading: settingsLoading } = useSettings();
     const [apiKey, setApiKey] = useState("");
     const [showKey, setShowKey] = useState(false);
     const [models, setModels] = useState<Model[]>([]);
@@ -23,6 +25,25 @@ export default function AiSettingsPanel() {
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
     const [freeOnly, setFreeOnly] = useState(true);
+    const [savedSuccess, setSavedSuccess] = useState(false);
+
+    useEffect(() => {
+        if (!settingsLoading) {
+            setApiKey(settings.api_key);
+            setSelectedModel(settings.model_id);
+        }
+    }, [settings, settingsLoading]);
+
+    const handleSave = async () => {
+        const success = await saveSettings({
+            api_key: apiKey,
+            model_id: selectedModel
+        });
+        if (success) {
+            setSavedSuccess(true);
+            setTimeout(() => setSavedSuccess(false), 2000);
+        }
+    };
 
     // Use a map to handle custom inputs + fetched models
     const allModels = query === ""
@@ -198,9 +219,18 @@ export default function AiSettingsPanel() {
             </div>
 
             {/* Save Button */}
-            <button className="w-full py-4 rounded-xl font-bold tracking-wide text-blue-600 bg-[#e0e5ec] shadow-[6px_6px_12px_#b8b9be,-6px_-6px_12px_#ffffff] hover:shadow-[4px_4px_8px_#b8b9be,-4px_-4px_8px_#ffffff] hover:text-blue-700 active:shadow-[inset_4px_4px_8px_#b8b9be,inset_-4px_-4px_8px_#ffffff] active:translate-y-[1px] transition-all flex items-center justify-center gap-2">
-                <Save size={20} />
-                Save Configuration
+            {/* Save Button */}
+            <button
+                onClick={handleSave}
+                className={clsx(
+                    "w-full py-4 rounded-xl font-bold tracking-wide transition-all flex items-center justify-center gap-2",
+                    "bg-[#e0e5ec] shadow-[6px_6px_12px_#b8b9be,-6px_-6px_12px_#ffffff]",
+                    "hover:shadow-[4px_4px_8px_#b8b9be,-4px_-4px_8px_#ffffff] hover:text-blue-700",
+                    "active:shadow-[inset_4px_4px_8px_#b8b9be,inset_-4px_-4px_8px_#ffffff] active:translate-y-[1px]",
+                    savedSuccess ? "text-green-600" : "text-blue-600"
+                )}>
+                {savedSuccess ? <Check size={20} /> : <Save size={20} />}
+                {savedSuccess ? "Saved Successfully" : "Save Configuration"}
             </button>
 
         </div>

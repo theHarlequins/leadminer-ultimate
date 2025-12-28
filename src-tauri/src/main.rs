@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tauri::Manager;
 
 // Импортируем модули из lib.rs
 use leadminer_ultimate::{
@@ -12,6 +13,7 @@ use leadminer_ultimate::{
     scraper::{EnrichedLead, LeadScraper},
     connection_test::ConnectionTester,
     ai::{AiService, OpenRouterModel},
+    settings::{Settings, SettingsStore},
 };
 
 // Глобальное состояние приложения
@@ -19,6 +21,7 @@ struct AppState {
     proxy_rotator: Arc<Mutex<ProxyRotator>>,
     scraper: Arc<LeadScraper>,
     ai_service: Arc<AiService>,
+    settings_store: Arc<SettingsStore>,
 }
 
 #[tauri::command]
@@ -29,13 +32,30 @@ async fn fetch_models(
     state.ai_service.fetch_models(&api_key).await
 }
 
-// ... existing commands ...
+#[tauri::command]
+async fn save_settings(
+    settings: Settings,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state.settings_store.save(settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<Settings, String> {
+    Ok(state.settings_store.get())
+}
 
 #[tauri::command]
 async fn start_scraping(
     city: String,
     query: String,
+    api_key: Option<String>,
+    model_id: Option<String>,
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<Vec<EnrichedLead>, String> {
     // ... code ...
     println!("=== LeadMiner: Запрос на скрапинг ===");
@@ -45,6 +65,7 @@ async fn start_scraping(
     
     let scraper = state.scraper.clone();
     let proxy_rotator = state.proxy_rotator.clone();
+    let ai_service = state.ai_service.clone();
     
     // Проверяем количество прокси
     {
@@ -57,8 +78,33 @@ async fn start_scraping(
     }
     
     match scraper.scrape(&city, &query, proxy_rotator).await {
-        Ok(leads) => {
+        Ok(mut leads) => {
             println!("=== Успешно! Найдено {} лидов ===", leads.len());
+            
+            // Если есть API ключ, запускаем AI анализ
+            if let Some(key) = api_key {
+                if !key.is_empty() {
+                    let model = model_id.unwrap_or_else(|| "google/gemini-2.0-flash-exp:free".to_string());
+                    println!("=== Запуск AI анализа (Model: {}) ===", model);
+                    
+                    for lead in &mut leads {
+                        match ai_service.analyze_lead(lead, &key, &model).await {
+                            Ok(_) => println!("AI: Анализ для {} завершен", lead.name),
+                            Err(e) => println!("AI: Ошибка анализа для {}: {}", lead.name, e),
+                        }
+                    }
+                } else {
+                     println!("=== AI анализ пропущен (нет ключа) ===");
+                }
+            } else {
+                println!("=== AI анализ пропущен (нет ключа) ===");
+            }
+            
+            // Авто-сохранение в CSV
+            if let Err(e) = save_leads_to_csv(&leads, &city, &app_handle) {
+                println!("Ошибка сохранения CSV: {}", e);
+            }
+
             Ok(leads)
         }
         Err(e) => {
@@ -68,7 +114,45 @@ async fn start_scraping(
     }
 }
 
-// ... update_proxies, normalize_phone_command, test_connection ...
+fn save_leads_to_csv(leads: &[EnrichedLead], city: &str, app: &tauri::AppHandle) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let dir = app.path().app_data_dir().unwrap().join("exports");
+    std::fs::create_dir_all(&dir)?;
+
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let filename = format!("leads_{}_{}.csv", city, timestamp);
+    let path = dir.join(filename);
+
+    let mut file = std::fs::File::create(&path)?;
+    writeln!(file, "Name,Phone,Type,City,Address,Website,Status,Source")?;
+
+    for lead in leads {
+        writeln!(file, "{},{},{:?},{},{},{},{:?},{}", 
+            escape_csv(&lead.name),
+            escape_csv(&lead.normalized_phone),
+            lead.phone_type,
+            escape_csv(&lead.city),
+            escape_csv(&lead.address),
+            escape_csv(&lead.website.clone().unwrap_or_default()),
+            lead.status,
+            lead.source
+        )?;
+    }
+    
+    println!("=== Результаты сохранены в: {:?} ===", path);
+    Ok(())
+}
+
+fn escape_csv(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace("\"", "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
 #[tauri::command]
 async fn update_proxies(
     proxies: Vec<String>,
@@ -108,10 +192,15 @@ fn main() {
     println!("=== LeadMiner Ultimate запускается ===");
     
     tauri::Builder::default()
-        .manage(AppState {
-            proxy_rotator: Arc::new(Mutex::new(ProxyRotator::new())),
-            scraper: Arc::new(LeadScraper::new()),
-            ai_service: Arc::new(AiService::new()),
+        .setup(|app| {
+             let settings_store = SettingsStore::new(app.handle());
+             app.manage(AppState {
+                proxy_rotator: Arc::new(Mutex::new(ProxyRotator::new())),
+                scraper: Arc::new(LeadScraper::new()),
+                ai_service: Arc::new(AiService::new()),
+                settings_store: Arc::new(settings_store),
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             start_scraping,
@@ -119,6 +208,8 @@ fn main() {
             normalize_phone_command,
             test_connection,
             fetch_models,
+            save_settings,
+            get_settings
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска LeadMiner Ultimate");

@@ -13,6 +13,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import AiSettingsPanel from './components/AiSettingsPanel';
+import { useSettings } from './hooks/useSettings';
 
 interface Lead {
   name: string;
@@ -29,6 +30,7 @@ interface Lead {
 
 const App: React.FC = () => {
   const queryClient = useQueryClient();
+  const { settings } = useSettings();
   const [city, setCity] = useState('');
   const [query, setQuery] = useState('обувь');
   const [showSettings, setShowSettings] = useState(false);
@@ -38,7 +40,12 @@ const App: React.FC = () => {
   const leadsQuery = useQuery<Lead[]>({
     queryKey: ['leads'],
     queryFn: async () => {
-      const result = await invoke<Lead[]>('start_scraping', { city, query });
+      const result = await invoke<Lead[]>('start_scraping', {
+        city,
+        query,
+        apiKey: settings.api_key,
+        modelId: settings.model_id
+      });
       return result;
     },
     enabled: false,
