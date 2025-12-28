@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Copy,
   MessageCircle,
   MessageSquare,
-  CheckCircle,
   AlertCircle,
   Search,
   Settings,
@@ -13,6 +12,7 @@ import {
   Wifi,
   AlertTriangle
 } from 'lucide-react';
+import SettingsComponent from './components/Settings'; // Renaming import to avoid conflict with Lucide icon
 
 interface Lead {
   name: string;
@@ -33,9 +33,7 @@ const App: React.FC = () => {
   const [query, setQuery] = useState('обувь');
   const [showSettings, setShowSettings] = useState(false);
   const [showConnectionTest, setShowConnectionTest] = useState(false);
-  const [proxies, setProxies] = useState<string[]>([]);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
-
   // Запрос для получения лидов
   const leadsQuery = useQuery<Lead[]>({
     queryKey: ['leads'],
@@ -45,16 +43,6 @@ const App: React.FC = () => {
     },
     enabled: false,
     retry: 2,
-  });
-
-  // Мутация для обновления прокси
-  const updateProxiesMutation = useMutation({
-    mutationFn: async (proxyList: string[]) => {
-      await invoke('update_proxies', { proxies: proxyList });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['proxies'] });
-    },
   });
 
   // Запрос для тестирования соединения
@@ -92,7 +80,7 @@ const App: React.FC = () => {
   // Скачать результаты
   const downloadResults = () => {
     if (!leadsQuery.data) return;
-    
+
     const csv = convertToCSV(leadsQuery.data);
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -117,7 +105,7 @@ const App: React.FC = () => {
       lead.facebook || '',
       lead.status
     ]);
-    
+
     return [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   };
 
@@ -155,7 +143,7 @@ const App: React.FC = () => {
                 className={`${neumorphicInput} w-full`}
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Запрос</label>
               <input
@@ -171,9 +159,8 @@ const App: React.FC = () => {
               <button
                 onClick={() => leadsQuery.refetch()}
                 disabled={!city || leadsQuery.isFetching}
-                className={`${neumorphicButton} flex-1 flex items-center justify-center gap-2 ${
-                  leadsQuery.isFetching ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                className={`${neumorphicButton} flex-1 flex items-center justify-center gap-2 ${leadsQuery.isFetching ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
               >
                 <Search size={18} />
                 {leadsQuery.isFetching ? 'Поиск...' : 'Искать'}
@@ -191,9 +178,8 @@ const App: React.FC = () => {
               <button
                 onClick={downloadResults}
                 disabled={!leadsQuery.data}
-                className={`${neumorphicButton} flex-1 flex items-center justify-center gap-2 ${
-                  !leadsQuery.data ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                className={`${neumorphicButton} flex-1 flex items-center justify-center gap-2 ${!leadsQuery.data ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
               >
                 <Download size={18} />
               </button>
@@ -205,9 +191,8 @@ const App: React.FC = () => {
             <button
               onClick={runConnectionTest}
               disabled={connectionTestQuery.isFetching}
-              className={`${neumorphicButton} flex items-center justify-center gap-2 ${
-                connectionTestQuery.isFetching ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
+              className={`${neumorphicButton} flex items-center justify-center gap-2 ${connectionTestQuery.isFetching ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
             >
               <Wifi size={18} />
               {connectionTestQuery.isFetching ? 'Тестирование...' : 'Проверить соединение'}
@@ -250,26 +235,7 @@ const App: React.FC = () => {
           {/* Proxy Settings */}
           {showSettings && (
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Настройки прокси</h3>
-              <textarea
-                placeholder="Введите прокси (по одному на строку)
-Формат: http://user:pass@host:port
-Или: socks5://host:port"
-                value={proxies.join('\n')}
-                onChange={(e) => setProxies(e.target.value.split('\n').filter(Boolean))}
-                className={`${neumorphicInput} w-full h-24 mb-3 font-mono text-sm`}
-              />
-              <button
-                onClick={() => updateProxiesMutation.mutate(proxies)}
-                className={`${neumorphicButton} bg-blue-500 text-white hover:bg-blue-600`}
-              >
-                Сохранить прокси ({proxies.length})
-              </button>
-              {updateProxiesMutation.isSuccess && (
-                <span className="ml-3 text-green-600 flex items-center gap-1">
-                  <CheckCircle size={16} /> Сохранено
-                </span>
-              )}
+              <SettingsComponent />
             </div>
           )}
         </div>
@@ -317,18 +283,17 @@ const App: React.FC = () => {
                 </thead>
                 <tbody>
                   {leadsQuery.data.map((lead, index) => (
-                    <tr 
-                      key={index} 
+                    <tr
+                      key={index}
                       className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
                     >
                       <td className="py-3 px-4 font-medium text-gray-800">{lead.name}</td>
                       <td className="py-3 px-4 text-gray-600">{lead.city}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <span 
-                            className={`font-mono font-semibold ${
-                              lead.phone_type === 'Mobile' ? 'text-green-600' : 'text-gray-500'
-                            }`}
+                          <span
+                            className={`font-mono font-semibold ${lead.phone_type === 'Mobile' ? 'text-green-600' : 'text-gray-500'
+                              }`}
                           >
                             {lead.normalized_phone}
                           </span>
@@ -356,13 +321,12 @@ const App: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`${neumorphicBadge} ${
-                          lead.status === 'New' ? 'bg-blue-100 text-blue-700' :
+                        <span className={`${neumorphicBadge} ${lead.status === 'New' ? 'bg-blue-100 text-blue-700' :
                           lead.status === 'Contacted' ? 'bg-green-100 text-green-700' :
-                          'bg-red-100 text-red-700'
-                        }`}>
+                            'bg-red-100 text-red-700'
+                          }`}>
                           {lead.status === 'New' ? 'Новый' :
-                           lead.status === 'Contacted' ? 'Контактирован' : 'Плохой'}
+                            lead.status === 'Contacted' ? 'Контактирован' : 'Плохой'}
                         </span>
                       </td>
                       <td className="py-3 px-4">
