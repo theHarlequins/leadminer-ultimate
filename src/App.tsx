@@ -30,7 +30,7 @@ interface Lead {
 
 const App: React.FC = () => {
   const queryClient = useQueryClient();
-  const { settings } = useSettings();
+  const { settings, loading: settingsLoading } = useSettings();
   const [city, setCity] = useState('');
   const [query, setQuery] = useState('обувь');
   const [showSettings, setShowSettings] = useState(false);
@@ -38,8 +38,12 @@ const App: React.FC = () => {
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   // Запрос для получения лидов
   const leadsQuery = useQuery<Lead[]>({
-    queryKey: ['leads'],
+    queryKey: ['leads', settings.api_key],
     queryFn: async () => {
+      console.log('[DEBUG] Search triggered with settings:', {
+        apiKey: settings.api_key ? 'PROVIDED' : 'EMPTY',
+        modelId: settings.model_id
+      });
       const result = await invoke<Lead[]>('start_scraping', {
         city,
         query,

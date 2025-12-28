@@ -61,6 +61,8 @@ async fn start_scraping(
     println!("=== LeadMiner: Запрос на скрапинг ===");
     println!("Город: {}", city);
     println!("Запрос: {}", query);
+    println!("API Key: {}", if api_key.as_ref().map_or(false, |k| !k.is_empty()) { "PROVIDED" } else { "EMPTY" });
+    println!("Model ID: {:?}", model_id);
     println!("Время: {:?}", std::time::SystemTime::now());
     
     let scraper = state.scraper.clone();
